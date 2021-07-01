@@ -55,7 +55,6 @@ def run(addr, port):
             print('[TO WRITE]', s)
             request = requests[s]
             if request['method'] != b'GET' or \
-               'resource' not in request or   \
                request['version'] not in [b'HTTP/1.0', b'HTTP/1.1']:
                 print('[BAD REQUEST]', request)
                 s.sendall(compose_response_header(400))
