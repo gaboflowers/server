@@ -4,10 +4,13 @@ import select
 import sys, os
 
 SERVED_DIR = 'web'
-SERVED_DIR_PATH = '' # autofilled
-RECV_SIZE = 2048
-MAX_REQSIZE = 10000
+SERVED_DIR_PATH = '' # autofilled by init()
+FILENAME_LOOKUP = [b'index.html', b'index.htm'] # names to look for if resource
+                                                # is a folder
+RECV_SIZE = 2048        # size of the block read from the socket
+MAX_REQSIZE = 10000     # max size of an HTTP request
 
+# HTTP codes
 STATUS_CODES_FILENAME = 'status_codes.csv'
 status_codes = {b'876': b'You got me'}
 STATUS_TEMPLATE_FILENAME = 'status_template.html'
@@ -44,6 +47,7 @@ def run(addr, port):
                 print('[DATA', s.getpeername(), ']',received[client_socket])
                 if len(received[client_socket]) > MAX_REQSIZE:
                     print('[REQUEST TOO LARGE]', s, file=sys.stderr)
+                    del received[client_socket]
                     inputs.remove(s)
                 if received[client_socket].endswith(b'\r\n\r\n'):
                     requests[s] = parse_request(received[client_socket])
@@ -55,7 +59,7 @@ def run(addr, port):
             print('[TO WRITE]', s)
             request = requests[s]
             if request['method'] != b'GET' or \
-               request['version'] not in [b'HTTP/1.0', b'HTTP/1.1']:
+               request['version'] not in [b'', b'HTTP/1.0', b'HTTP/1.1']:
                 print('[BAD REQUEST]', request)
                 s.sendall(compose_response_header(400))
                 s.close()
@@ -87,7 +91,12 @@ def run(addr, port):
 def parse_request(http):
     http_lines = http[:-4].split(b'\r\n')
     request = {}
-    method, resource, version = http_lines[0].split(b' ', 3)
+    method, resource_and_version = http_lines[0].split(b' ', 1)
+    if b' ' in resource_and_version:
+        resource, version = resource_and_version.split(b' ', 1)
+    else:
+        resource = resource_and_version
+        version = b''
     request = {'method': method,
                'resource': resource,
                'version': version}
@@ -121,6 +130,15 @@ def html_status_response(code):
         return content
 
 def find_resource(name):
+    '''
+    Finds the resource `name` within the SERVED_DIR.
+    If found, returns the full path filename as a string.
+    If not found within SERVED_DIR, returns an integer HTTP error code.
+
+    - name: string
+    Returns:
+      str or int
+    '''
     if not name.startswith(b'/'):
         return 400
     resource_path = os.path.realpath(b'%b/%b' % (SERVED_DIR, name))
@@ -129,6 +147,12 @@ def find_resource(name):
         return 403
     if os.path.isfile(resource_path):
         return resource_path
+    if os.path.isdir(resource_path):
+        for possible_filename in FILENAME_LOOKUP:
+            possible_path =  os.path.join(resource_path, possible_filename)
+            print('[RESOURCE_PATH IS DIR] Trying', possible_path)
+            if os.path.isfile(possible_path):
+                return possible_path
     return 404
 
 def init():
