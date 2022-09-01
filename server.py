@@ -3,8 +3,8 @@ import socket
 import select
 import sys, os
 
-SERVED_DIR = 'web'
-SERVED_DIR_PATH = '' # autofilled by init()
+SERVED_DIR = 'web'    # <- SET THE FOLDER YOU WANT TO SERVE
+SERVED_DIR_PATH = ''  # autofilled by init()
 FILENAME_LOOKUP = [b'index.html', b'index.htm'] # names to look for if resource
                                                 # is a folder
 RECV_SIZE = 2048        # size of the block read from the socket
@@ -16,14 +16,22 @@ status_codes = {b'876': b'You got me'}
 STATUS_TEMPLATE_FILENAME = 'status_template.html'
 
 def run(addr, port):
+    '''
+    Runs an HTTP server at `addr`:`port`.
+
+    - addr: str
+    - port: int
+    Returns:
+      None
+    '''
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setblocking(0)
     server_socket.bind((addr, port))
     server_socket.listen()
     inputs = [ server_socket ]
     outputs = []
-    received = dict()
-    requests = dict()
+    received = dict()  # data (bytes) received by socket
+    requests = dict()  # parse_request dicts, by socket
     while inputs:
         to_read, to_write, err = select.select(inputs, outputs, inputs)
         if err:
@@ -89,8 +97,25 @@ def run(addr, port):
                 outputs.remove(s)
 
 def parse_request(http):
+    '''
+    Returns a dict with the keys 'method', 'resource' and 'version', parsing
+    an HTTP header. If present, other headers will also be keys of the
+    returned dict.
+
+    Additional header keys and all of the values will be BYTES.
+    The 'method', 'resource' and 'version' keys are STR, but their values are
+    also BYTES.
+
+    - http: bytes
+    Returns:
+      dict of [str|bytes] to [bytes]
+    '''
+    # Header lines are ALWAYS terminated by CRLF ("\r\n")
     http_lines = http[:-4].split(b'\r\n')
     request = {}
+    # First line is HTTP Method, then Resource and optionally version
+    # Ex: "GET /index.html"
+    #     "GET /favicon.ico HTTP/1.1"
     method, resource_and_version = http_lines[0].split(b' ', 1)
     if b' ' in resource_and_version:
         resource, version = resource_and_version.split(b' ', 1)
@@ -100,12 +125,19 @@ def parse_request(http):
     request = {'method': method,
                'resource': resource,
                'version': version}
+    # The following lines may be some other HTTP headers
+    # Ex: "User-Agent: Mozilla/5.0"
+    #     "Accept-Encoding: gzip, deflate, br"
     for line in http_lines[1:]:
         key, value = line.split(b': ', 1)
         request[key] = value
     return request
 
 def load_status_codes():
+    '''
+    Read the status codes from the STATUS_CODES_FILENAME file,
+    populating the `status_codes` global dict.
+    '''
     with open(STATUS_CODES_FILENAME, 'rb') as f:
         for i, line in enumerate(f):
             if i == 0:
@@ -114,6 +146,17 @@ def load_status_codes():
             status_codes[int(code)] = reason
 
 def compose_response_header(code, **kwargs):
+    '''
+    Returns the HTTP headers given the HTTP status `code`.
+    If `length` is passed, the 'Content-Length' header is also added.
+
+    - code: int
+    Keyword arguments:
+      length: int
+    Returns:
+      bytes
+    '''
+
     length = kwargs.get('length', None)
     header = b'HTTP/1.1 %d %b\r\n' % (code, status_codes[code])
     header += b'Server: uno chico, por?\r\n'
@@ -123,6 +166,14 @@ def compose_response_header(code, **kwargs):
     return header
 
 def html_status_response(code):
+    '''
+    Returns an HTML info webpage given the HTTP status `code` passed.
+    The webpage is based on the STATUS_TEMPLATE_FILENAME template.
+
+    - code: int
+    Returns:
+      bytes
+    '''
     with open(STATUS_TEMPLATE_FILENAME, 'rb') as f:
         content = f.read()
         content = content.replace(b'[[HTTP_CODE]]', str(code).encode('utf-8'))
@@ -156,6 +207,9 @@ def find_resource(name):
     return 404
 
 def init():
+    '''
+    Loads initial global variables.
+    '''
     load_status_codes()
     global SERVED_DIR
     if type(SERVED_DIR) == str:

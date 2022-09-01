@@ -1,6 +1,7 @@
 # server
 
 Pequeño servidor web. Sirve los contenidos del directorio definido en la variable `SERVED_DIR` (por defecto, `'./web'`).
+Sólo está implementado el método GET.
 
 ## Ejemplo de uso
 
