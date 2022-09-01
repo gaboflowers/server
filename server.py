@@ -101,7 +101,7 @@ def parse_request(http):
                'resource': resource,
                'version': version}
     for line in http_lines[1:]:
-        key, value = line.split(b': ', 2)
+        key, value = line.split(b': ', 1)
         request[key] = value
     return request
 
